@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts'
 import { TrendingUp, DollarSign, Clock, CheckCircle } from 'lucide-react'
-import { projects, expenses, tasks } from '../services/api'
+import { projects, expenses, tasks, budget, scrum } from '../services/api'
 import toast from 'react-hot-toast'
 
 const Dashboard = () => {
   const [projectList, setProjectList] = useState([])
   const [expenseList, setExpenseList] = useState([])
   const [taskList, setTaskList] = useState([])
+  const [budgetData, setBudgetData] = useState(null)
+  const [scrumSchedule, setScrumSchedule] = useState(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -16,15 +18,27 @@ const Dashboard = () => {
 
   const loadData = async () => {
     try {
-      const [projectsRes, expensesRes, tasksRes] = await Promise.all([
+      const [projectsRes, expensesRes, tasksRes, budgetRes, scrumRes] = await Promise.all([
         projects.getAll().catch(() => ({ data: { projects: [] } })),
         expenses.getAll().catch(() => ({ data: { expenses: [] } })),
-        tasks.getAll().catch(() => ({ data: { tasks: [] } }))
+        tasks.getAll().catch(() => ({ data: { tasks: [] } })),
+        budget.get().catch(() => ({ data: { budget: null } })),
+        scrum.getSchedules().catch(() => ({ data: { schedules: [] } }))
       ])
       
       setProjectList(projectsRes.data.projects || [])
       setExpenseList(expensesRes.data.expenses || [])
       setTaskList(tasksRes.data.tasks || [])
+      setBudgetData(budgetRes.data.budget)
+      
+      // Get the most recent scrum schedule
+      if (scrumRes.data.schedules && scrumRes.data.schedules.length > 0) {
+        const schedules = scrumRes.data.schedules
+        const latestSchedule = schedules.sort((a, b) => 
+          new Date(b.updated_at) - new Date(a.updated_at)
+        )[0]
+        setScrumSchedule(latestSchedule)
+      }
     } catch (error) {
       console.error('Failed to load dashboard data', error)
     } finally {
@@ -32,18 +46,37 @@ const Dashboard = () => {
     }
   }
 
+  // Calculate Scrum progress (same logic as Progress page)
+  const calculateScrumProgress = () => {
+    if (!scrumSchedule?.schedule?.sprints) return 0
+    
+    let totalChecklistItems = 0
+    let completedChecklistItems = 0
+    
+    scrumSchedule.schedule.sprints.forEach(sprint => {
+      const checklist = sprint.checklist || []
+      const checklistStatus = sprint.checklist_status || {}
+      
+      totalChecklistItems += checklist.length
+      completedChecklistItems += checklist.filter(item => checklistStatus[item]).length
+    })
+    
+    return totalChecklistItems > 0 ? Math.round((completedChecklistItems / totalChecklistItems) * 100) : 0
+  }
+
   // Calculate metrics
-  const totalBudget = projectList.reduce((sum, p) => {
-    const budget = parseFloat(p.budget) || 0
-    return sum + budget
-  }, 0)
+  const totalBudget = budgetData ? parseFloat(budgetData.total_budget) || 0 : 0
   const totalSpent = expenseList.reduce((sum, e) => {
     const amount = parseFloat(e.amount) || 0
     return sum + amount
   }, 0)
   const activeProjects = projectList.filter(p => p.status === 'active').length
+  
+  // Use scrum progress if available, otherwise use task progress
   const completedTasks = taskList.filter(t => t.completed).length
-  const completionRate = taskList.length > 0 ? Math.round((completedTasks / taskList.length) * 100) : 0
+  const taskProgress = taskList.length > 0 ? Math.round((completedTasks / taskList.length) * 100) : 0
+  const scrumProgress = calculateScrumProgress()
+  const completionRate = scrumSchedule ? scrumProgress : taskProgress
 
   // Monthly trend
   const monthlyData = {}

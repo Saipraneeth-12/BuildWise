@@ -1,6 +1,7 @@
 """
 BuildWise Deterministic Residential Layout Engine
 Rule-based 2D residential layout generation with geometric logic
+CRITICAL: Side-by-side floor positioning, realistic room sizes, doors, windows
 """
 
 import re
@@ -11,15 +12,16 @@ class DeterministicLayoutEngine:
     """
     Deterministic residential layout generator
     Uses pure geometric rules - no probabilistic generation
+    Generates side-by-side multi-floor layouts with doors and windows
     """
     
-    # Room minimum dimensions (in meters)
+    # Room realistic dimensions (in meters) - CORRECTED FOR REALISM
     ROOM_CONSTRAINTS = {
-        'living': {'min_width': 3.5, 'min_length': 4.0},
-        'bedroom': {'min_width': 3.0, 'min_length': 3.0},
-        'kitchen': {'min_width': 2.4, 'min_length': 3.0},
-        'toilet': {'min_width': 1.2, 'min_length': 2.4},
-        'staircase': {'min_width': 1.0, 'min_length': 3.0}
+        'living': {'min_width': 3.5, 'min_length': 4.0, 'typical_width': 4.0, 'typical_length': 4.0},
+        'bedroom': {'min_width': 3.0, 'min_length': 3.0, 'typical_width': 3.0, 'typical_length': 3.5},
+        'kitchen': {'min_width': 2.4, 'min_length': 2.5, 'typical_width': 3.0, 'typical_length': 2.5},
+        'toilet': {'min_width': 1.2, 'min_length': 2.4, 'typical_width': 1.2, 'typical_length': 2.4},
+        'staircase': {'min_width': 1.0, 'min_length': 3.0, 'typical_width': 1.0, 'typical_length': 3.0}
     }
     
     # Configuration room counts
@@ -29,8 +31,22 @@ class DeterministicLayoutEngine:
         '3BHK': {'living': 1, 'bedroom': 3, 'kitchen': 1, 'toilet': 2}
     }
     
+    # Door widths (in meters)
+    DOOR_WIDTHS = {
+        'main': 1.0,
+        'internal': 0.8,
+        'toilet': 0.7
+    }
+    
+    # Window widths (in meters)
+    WINDOW_WIDTHS = {
+        'standard': 1.2,
+        'ventilator': 0.6
+    }
+    
     def __init__(self):
-        self.grid_size = 0.5  # 0.5m grid alignment
+        self.grid_size = 0.1  # 0.1m grid alignment for precision
+        self.floor_gap = 2.0  # 2 meters gap between floors in visualization
     
     def parse_input(self, prompt: str) -> Dict:
         """
@@ -94,6 +110,7 @@ class DeterministicLayoutEngine:
     def generate_layout(self, params: Dict) -> Dict:
         """
         Generate deterministic layout based on parameters
+        CRITICAL: Floors positioned side-by-side, not stacked
         """
         # Validate parameters
         if 'error' in params:
@@ -104,16 +121,20 @@ class DeterministicLayoutEngine:
         floors = params['floors']
         configuration = params['configuration']
         duplex_mode = params.get('duplex_mode', False)
+        staircase_type = params.get('staircase_type', 'internal')
         
         # Validate plot size
         validation_error = self._validate_plot_size(plot_width, plot_length, configuration)
         if validation_error:
             return {'error': validation_error}
         
-        # Generate floor layouts
+        # Generate floor layouts with side-by-side positioning
         floor_layouts = []
         
         for floor_num in range(1, floors + 1):
+            # Calculate floor origin (side-by-side positioning)
+            floor_origin_x = (floor_num - 1) * (plot_width + self.floor_gap)
+            
             if duplex_mode and floor_num == 2:
                 # Upper floor in duplex: bedrooms only
                 floor_layout = self._generate_duplex_upper_floor(
@@ -123,41 +144,56 @@ class DeterministicLayoutEngine:
                 # Standard floor layout
                 floor_layout = self._generate_standard_floor(
                     plot_width, plot_length, configuration, 
-                    has_staircase=(floors > 1)
+                    has_staircase=(floors > 1 and staircase_type == 'internal')
                 )
             
             floor_layout['floor_number'] = floor_num
+            floor_layout['origin_x'] = floor_origin_x
+            floor_layout['origin_y'] = 0
             floor_layouts.append(floor_layout)
         
-        # Calculate areas
-        total_built_up = sum(floor['built_up_area'] for floor in floor_layouts)
+        # Calculate areas - CORRECTED METRICS
         plot_area = plot_width * plot_length
-        efficiency_ratio = round(total_built_up / plot_area, 2)
+        total_built_up = sum(floor['built_up_area'] for floor in floor_layouts)
+        ground_coverage = round(floor_layouts[0]['built_up_area'] / plot_area, 2) if floor_layouts else 0
+        fsi = round(total_built_up / plot_area, 2)
+        
+        # Calculate total canvas width for visualization
+        total_canvas_width = floors * plot_width + (floors - 1) * self.floor_gap
         
         return {
             'plot': {
                 'width_m': round(plot_width, 2),
-                'length_m': round(plot_length, 2)
+                'length_m': round(plot_length, 2),
+                'area_m2': round(plot_area, 2)
             },
             'configuration': configuration,
             'floors': floor_layouts,
             'total_built_up_area': round(total_built_up, 2),
-            'efficiency_ratio': efficiency_ratio
+            'ground_coverage': ground_coverage,
+            'fsi': fsi,
+            'canvas_width': round(total_canvas_width, 2),
+            'canvas_height': round(plot_length, 2)
         }
     
     def _generate_standard_floor(self, width: float, length: float, 
                                  config: str, has_staircase: bool) -> Dict:
-        """Generate standard floor layout"""
+        """
+        Generate standard floor layout with REALISTIC room sizes
+        CRITICAL: Rooms must not occupy 80% of plot width
+        """
         rooms = []
+        doors = []
+        windows = []
         current_x = 0
         current_y = 0
         
         room_counts = self.CONFIGURATIONS[config]
         
-        # Step 1: Place staircase if multi-floor
+        # Step 1: Place staircase if multi-floor (internal)
         if has_staircase:
-            stair_width = 1.5
-            stair_length = 3.0
+            stair_width = self.ROOM_CONSTRAINTS['staircase']['typical_width']
+            stair_length = self.ROOM_CONSTRAINTS['staircase']['typical_length']
             rooms.append({
                 'name': 'Staircase',
                 'x': 0,
@@ -168,11 +204,13 @@ class DeterministicLayoutEngine:
             })
             current_x = stair_width
         
-        # Step 2: Place living room (front side)
-        living_width = width - current_x
-        living_length = length * 0.4  # 40% of plot length
-        living_width = max(living_width, self.ROOM_CONSTRAINTS['living']['min_width'])
-        living_length = max(living_length, self.ROOM_CONSTRAINTS['living']['min_length'])
+        # Step 2: Place living room (REALISTIC SIZE - 4m x 4m)
+        living_width = self.ROOM_CONSTRAINTS['living']['typical_width']
+        living_length = self.ROOM_CONSTRAINTS['living']['typical_length']
+        
+        # Ensure living room fits
+        if current_x + living_width > width:
+            living_width = width - current_x
         
         rooms.append({
             'name': 'Living Room',
@@ -183,55 +221,139 @@ class DeterministicLayoutEngine:
             'area': round(living_width * living_length, 2)
         })
         
-        # Step 3: Place kitchen (adjacent to living)
-        kitchen_width = width * 0.3
-        kitchen_length = length * 0.25
-        kitchen_width = max(kitchen_width, self.ROOM_CONSTRAINTS['kitchen']['min_width'])
-        kitchen_length = max(kitchen_length, self.ROOM_CONSTRAINTS['kitchen']['min_length'])
+        # Main door for living room
+        doors.append({
+            'type': 'main',
+            'width': self.DOOR_WIDTHS['main'],
+            'x': current_x + living_width / 2,
+            'y': 0,
+            'connects': ['Living Room', 'Outside']
+        })
+        
+        # Windows for living room (2 windows)
+        windows.append({
+            'width': self.WINDOW_WIDTHS['standard'],
+            'x': current_x + 0.5,
+            'y': 0,
+            'room': 'Living Room'
+        })
+        windows.append({
+            'width': self.WINDOW_WIDTHS['standard'],
+            'x': current_x + living_width - 1.5,
+            'y': 0,
+            'room': 'Living Room'
+        })
+        
+        # Step 3: Place kitchen (REALISTIC SIZE - 3m x 2.5m)
+        kitchen_width = self.ROOM_CONSTRAINTS['kitchen']['typical_width']
+        kitchen_length = self.ROOM_CONSTRAINTS['kitchen']['typical_length']
+        kitchen_y = living_length
         
         rooms.append({
             'name': 'Kitchen',
             'x': 0,
-            'y': living_length,
+            'y': kitchen_y,
             'width': self._round_to_grid(kitchen_width),
             'length': self._round_to_grid(kitchen_length),
             'area': round(kitchen_width * kitchen_length, 2)
         })
         
-        # Step 4: Place bedrooms (rear side)
+        # Kitchen door
+        doors.append({
+            'type': 'internal',
+            'width': self.DOOR_WIDTHS['internal'],
+            'x': kitchen_width / 2,
+            'y': kitchen_y,
+            'connects': ['Kitchen', 'Living Room']
+        })
+        
+        # Kitchen window
+        windows.append({
+            'width': self.WINDOW_WIDTHS['standard'],
+            'x': 0,
+            'y': kitchen_y + kitchen_length / 2,
+            'room': 'Kitchen'
+        })
+        
+        # Step 4: Place bedrooms (REALISTIC SIZE - 3m x 3.5m each)
         bedroom_count = room_counts['bedroom']
         bedroom_start_y = living_length + kitchen_length
-        bedroom_width = width / bedroom_count
-        bedroom_length = length - bedroom_start_y
+        bedroom_width = self.ROOM_CONSTRAINTS['bedroom']['typical_width']
+        bedroom_length = self.ROOM_CONSTRAINTS['bedroom']['typical_length']
         
-        bedroom_width = max(bedroom_width, self.ROOM_CONSTRAINTS['bedroom']['min_width'])
-        bedroom_length = max(bedroom_length, self.ROOM_CONSTRAINTS['bedroom']['min_length'])
+        # Ensure bedrooms fit in remaining space
+        remaining_length = length - bedroom_start_y
+        if bedroom_length > remaining_length:
+            bedroom_length = remaining_length
         
         for i in range(bedroom_count):
+            bedroom_x = i * bedroom_width
+            
+            # Ensure bedroom fits in width
+            if bedroom_x + bedroom_width > width:
+                bedroom_width = width - bedroom_x
+            
             rooms.append({
                 'name': f'Bedroom {i+1}',
-                'x': i * bedroom_width,
+                'x': bedroom_x,
                 'y': bedroom_start_y,
                 'width': self._round_to_grid(bedroom_width),
                 'length': self._round_to_grid(bedroom_length),
                 'area': round(bedroom_width * bedroom_length, 2)
             })
+            
+            # Bedroom door
+            doors.append({
+                'type': 'internal',
+                'width': self.DOOR_WIDTHS['internal'],
+                'x': bedroom_x + bedroom_width / 2,
+                'y': bedroom_start_y,
+                'connects': [f'Bedroom {i+1}', 'Corridor']
+            })
+            
+            # Bedroom window
+            windows.append({
+                'width': self.WINDOW_WIDTHS['standard'],
+                'x': bedroom_x + bedroom_width / 2,
+                'y': length,
+                'room': f'Bedroom {i+1}'
+            })
         
-        # Step 5: Place toilets (attached to bedrooms)
+        # Step 5: Place toilets (REALISTIC SIZE - 1.2m x 2.4m)
         toilet_count = room_counts['toilet']
-        toilet_width = self.ROOM_CONSTRAINTS['toilet']['min_width']
-        toilet_length = self.ROOM_CONSTRAINTS['toilet']['min_length']
+        toilet_width = self.ROOM_CONSTRAINTS['toilet']['typical_width']
+        toilet_length = self.ROOM_CONSTRAINTS['toilet']['typical_length']
         
         for i in range(toilet_count):
-            # Attach to bedroom
-            bedroom_x = rooms[-(bedroom_count - i)]['x']
+            # Attach to bedroom or place separately
+            toilet_x = i * (width / toilet_count)
+            toilet_y = bedroom_start_y + bedroom_length - toilet_length
+            
             rooms.append({
                 'name': f'Toilet {i+1}',
-                'x': bedroom_x,
-                'y': bedroom_start_y + bedroom_length - toilet_length,
+                'x': toilet_x,
+                'y': toilet_y,
                 'width': self._round_to_grid(toilet_width),
                 'length': self._round_to_grid(toilet_length),
                 'area': round(toilet_width * toilet_length, 2)
+            })
+            
+            # Toilet door
+            doors.append({
+                'type': 'toilet',
+                'width': self.DOOR_WIDTHS['toilet'],
+                'x': toilet_x + toilet_width / 2,
+                'y': toilet_y,
+                'connects': [f'Toilet {i+1}', f'Bedroom {i+1}']
+            })
+            
+            # Toilet ventilator
+            windows.append({
+                'width': self.WINDOW_WIDTHS['ventilator'],
+                'x': toilet_x + toilet_width / 2,
+                'y': toilet_y + toilet_length,
+                'room': f'Toilet {i+1}',
+                'type': 'ventilator'
             })
         
         # Calculate built-up area
@@ -239,47 +361,101 @@ class DeterministicLayoutEngine:
         
         return {
             'rooms': rooms,
+            'doors': doors,
+            'windows': windows,
             'built_up_area': round(built_up_area, 2)
         }
     
     def _generate_duplex_upper_floor(self, width: float, length: float, config: str) -> Dict:
-        """Generate upper floor for duplex (bedrooms only)"""
+        """
+        Generate upper floor for duplex (bedrooms only)
+        Staircase void removed from usable area
+        """
         rooms = []
+        doors = []
+        windows = []
         room_counts = self.CONFIGURATIONS[config]
         
-        # Bedrooms distributed across floor
+        # Staircase void (not counted in built-up)
+        stair_width = self.ROOM_CONSTRAINTS['staircase']['typical_width']
+        stair_length = self.ROOM_CONSTRAINTS['staircase']['typical_length']
+        
+        # Bedrooms distributed across remaining floor
         bedroom_count = room_counts['bedroom']
-        bedroom_width = width / bedroom_count
-        bedroom_length = length * 0.6
+        bedroom_width = self.ROOM_CONSTRAINTS['bedroom']['typical_width']
+        bedroom_length = self.ROOM_CONSTRAINTS['bedroom']['typical_length']
         
         for i in range(bedroom_count):
+            bedroom_x = stair_width + i * bedroom_width
+            
             rooms.append({
                 'name': f'Bedroom {i+1}',
-                'x': i * bedroom_width,
+                'x': bedroom_x,
                 'y': 0,
                 'width': self._round_to_grid(bedroom_width),
                 'length': self._round_to_grid(bedroom_length),
                 'area': round(bedroom_width * bedroom_length, 2)
             })
+            
+            # Bedroom door
+            doors.append({
+                'type': 'internal',
+                'width': self.DOOR_WIDTHS['internal'],
+                'x': bedroom_x + bedroom_width / 2,
+                'y': 0,
+                'connects': [f'Bedroom {i+1}', 'Corridor']
+            })
+            
+            # Bedroom window
+            windows.append({
+                'width': self.WINDOW_WIDTHS['standard'],
+                'x': bedroom_x + bedroom_width / 2,
+                'y': bedroom_length,
+                'room': f'Bedroom {i+1}'
+            })
         
         # Toilets
         toilet_count = room_counts['toilet']
+        toilet_width = self.ROOM_CONSTRAINTS['toilet']['typical_width']
+        toilet_length = self.ROOM_CONSTRAINTS['toilet']['typical_length']
+        
         for i in range(toilet_count):
-            toilet_width = self.ROOM_CONSTRAINTS['toilet']['min_width']
-            toilet_length = self.ROOM_CONSTRAINTS['toilet']['min_length']
+            toilet_x = stair_width + i * (width - stair_width) / toilet_count
+            toilet_y = bedroom_length
+            
             rooms.append({
                 'name': f'Toilet {i+1}',
-                'x': i * (width / toilet_count),
-                'y': bedroom_length,
+                'x': toilet_x,
+                'y': toilet_y,
                 'width': self._round_to_grid(toilet_width),
                 'length': self._round_to_grid(toilet_length),
                 'area': round(toilet_width * toilet_length, 2)
+            })
+            
+            # Toilet door
+            doors.append({
+                'type': 'toilet',
+                'width': self.DOOR_WIDTHS['toilet'],
+                'x': toilet_x + toilet_width / 2,
+                'y': toilet_y,
+                'connects': [f'Toilet {i+1}', f'Bedroom {i+1}']
+            })
+            
+            # Toilet ventilator
+            windows.append({
+                'width': self.WINDOW_WIDTHS['ventilator'],
+                'x': toilet_x + toilet_width / 2,
+                'y': toilet_y + toilet_length,
+                'room': f'Toilet {i+1}',
+                'type': 'ventilator'
             })
         
         built_up_area = sum(room['area'] for room in rooms)
         
         return {
             'rooms': rooms,
+            'doors': doors,
+            'windows': windows,
             'built_up_area': round(built_up_area, 2)
         }
     
@@ -295,7 +471,10 @@ class DeterministicLayoutEngine:
         required = min_area_required.get(config, 60)
         
         if plot_area < required:
-            return f"Plot dimensions insufficient for {config}. Minimum {required}m² required, got {plot_area:.1f}m²"
+            return f"Layout cannot be generated with given constraints. Plot dimensions insufficient for {config}. Minimum {required}m² required, got {plot_area:.1f}m²"
+        
+        if width < 6 or length < 8:
+            return "Layout cannot be generated with given constraints. Minimum plot dimensions: 6m × 8m"
         
         return None
     

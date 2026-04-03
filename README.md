@@ -41,11 +41,46 @@ A complete production-ready full-stack web application for intelligent construct
 - Interactive charts and graphs
 
 ### 🤖 AI Assistant Chat
-- Chat interface with message history
-- Typing indicators and smooth UX
-- Placeholder for RAG integration
-- Conversation persistence
-- Ready for AI model integration
+- Professional construction planning assistant
+- Instant responses (7-8 seconds thinking time)
+- Comprehensive knowledge base with 15+ topics
+- Dynamic material calculations for any area
+- Message history and conversation context
+- Professional formatted responses with formulas
+
+**Sample Questions You Can Ask:**
+
+**Material Estimation:**
+- "How much steel for 1500 sqft?"
+- "Cement bags needed for 2000 sqft"
+- "Sand required for 800 sqft"
+- "Aggregate for 1800 sqft"
+- "Bricks for 1000 sqft wall"
+
+**Structural Requirements:**
+- "Minimum slab height required?"
+- "How many pillars for 30x40 feet plot?"
+- "Minimum beam size for 15 feet span?"
+- "Standard floor height for residential?"
+- "Wall thickness for load bearing?"
+
+**Labour & Timeline:**
+- "Labour cost for 1500 sqft building"
+- "Workers needed for 2500 sqft"
+- "Construction time for 2000 sqft"
+
+**Cost & Planning:**
+- "What is BOQ in construction?"
+- "Rate analysis for brickwork"
+- "Foundation cost estimation"
+- "Plastering cost per sqft"
+
+All questions get detailed answers with:
+- Given data and assumptions
+- Step-by-step calculations
+- Final answers with units
+- Professional recommendations
+- Industry standard thumb rules
 
 ### 📐 Material Estimator (Real Calculations)
 - Calculate material quantities based on:

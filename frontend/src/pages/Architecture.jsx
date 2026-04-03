@@ -10,9 +10,15 @@ const Architecture = () => {
   const [showAIModal, setShowAIModal] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
+  const [useProfessionalAI, setUseProfessionalAI] = useState(true)
+  const [generateVariants, setGenerateVariants] = useState(false)
+  const [numVariants, setNumVariants] = useState(3)
   const [blueprints, setBlueprints] = useState([])
   const [selectedBlueprint, setSelectedBlueprint] = useState(null)
   const [showBlueprintModal, setShowBlueprintModal] = useState(false)
+  const [showProfessionalAnalysis, setShowProfessionalAnalysis] = useState(false)
+  const [showVariants, setShowVariants] = useState(false)
+  const [selectedVariantIndex, setSelectedVariantIndex] = useState(0)
   const [measurements, setMeasurements] = useState([])
   const [annotations, setAnnotations] = useState([])
   const [drawingMode, setDrawingMode] = useState('select') // select, line, rect, circle, text, measure
@@ -27,6 +33,14 @@ const Architecture = () => {
     
     // Grid background
     fabricCanvas.setBackgroundColor('#ffffff', fabricCanvas.renderAll.bind(fabricCanvas))
+    
+    // Enable delete key
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Delete' && fabricCanvas.getActiveObject()) {
+        fabricCanvas.remove(fabricCanvas.getActiveObject())
+        fabricCanvas.renderAll()
+      }
+    })
     
     setCanvas(fabricCanvas)
     loadBlueprints()
@@ -191,16 +205,25 @@ const Architecture = () => {
     e.preventDefault()
     setAiLoading(true)
     try {
-      const response = await architecture.generateWithAI({ prompt: aiPrompt })
+      const response = await architecture.generateWithAI({ 
+        prompt: aiPrompt,
+        use_professional_ai: useProfessionalAI,
+        generate_variants: generateVariants,
+        num_variants: numVariants
+      })
       const blueprint = response.data.blueprint
       
-      toast.success('Blueprint generated successfully!')
+      toast.success(generateVariants ? `${numVariants} layout variants generated!` : 'Blueprint generated successfully!')
       setShowAIModal(false)
       setAiPrompt('')
       
       // Show generated blueprint
       setSelectedBlueprint(blueprint)
       setShowBlueprintModal(true)
+      if (generateVariants && blueprint.variants) {
+        setShowVariants(true)
+        setSelectedVariantIndex(0)
+      }
       
       // Reload blueprints list
       loadBlueprints()
@@ -250,31 +273,34 @@ const Architecture = () => {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-gray-800">Architecture Assistant</h1>
+        <div>
+          <h1 className="text-3xl font-bold text-gray-800">Architecture Assistant</h1>
+          <p className="text-sm text-gray-600 mt-1">AI-powered residential layout generation and design tools</p>
+        </div>
         <button
           onClick={() => setShowAIModal(true)}
           className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:shadow-lg transition-all"
         >
           <Sparkles size={20} />
-          AI Generate Blueprint
+          Generate Layout
         </button>
       </div>
 
       {/* AI Generated Blueprints Section */}
       {blueprints.length > 0 && (
         <div className="bg-white p-6 rounded-xl shadow-lg">
-          <h2 className="text-xl font-semibold mb-4">AI Generated Blueprints</h2>
+          <h2 className="text-xl font-semibold mb-4">Generated Layouts</h2>
           <div className="grid md:grid-cols-3 gap-4">
             {blueprints.map((bp) => (
               <div key={bp._id} className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow cursor-pointer"
                    onClick={() => { setSelectedBlueprint(bp); setShowBlueprintModal(true); }}>
                 <div className="aspect-video bg-gray-100 rounded mb-3 overflow-hidden">
-                  <img src={bp.blueprint_image} alt="Blueprint" className="w-full h-full object-contain" />
+                  <img src={bp.blueprint_image} alt="Layout" className="w-full h-full object-contain" />
                 </div>
                 <p className="font-semibold text-gray-800 truncate">{bp.metadata.configuration}</p>
                 <p className="text-sm text-gray-600 truncate">{bp.prompt}</p>
                 <p className="text-xs text-gray-500 mt-2">
-                  {bp.layout.total_built_up_area} m² • {bp.layout.floors.length} floor(s)
+                  {bp.layout.total_built_up_area} m² • FSI: {bp.layout.fsi}
                 </p>
               </div>
             ))}
@@ -374,34 +400,74 @@ const Architecture = () => {
           <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-2 mb-4">
               <Sparkles className="text-purple-600" size={24} />
-              <h2 className="text-2xl font-bold">AI Generate Blueprint</h2>
+              <h2 className="text-2xl font-bold">Generate Layout</h2>
             </div>
+            
+            {/* Professional AI Toggle */}
+            <div className="mb-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg border border-purple-200">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useProfessionalAI}
+                  onChange={(e) => setUseProfessionalAI(e.target.checked)}
+                  className="w-5 h-5 text-purple-600 rounded focus:ring-2 focus:ring-purple-500"
+                />
+                <div>
+                  <p className="font-semibold text-purple-900">Professional Architect AI</p>
+                  <p className="text-sm text-purple-700">
+                    Intelligent input extraction • Structural validation • Realistic layouts • 10-section analysis
+                  </p>
+                </div>
+              </label>
+            </div>
+            
             <p className="text-gray-600 mb-4">
-              Describe your building requirements using natural language. The AI will generate a detailed architectural blueprint with room layouts and measurements.
+              {useProfessionalAI 
+                ? "Describe your building in ANY format - paragraph, bullets, or structured. The AI will extract parameters intelligently and generate a professional architectural layout."
+                : "Describe your building requirements using natural language. The system will generate a deterministic residential layout."}
             </p>
+            
             <form onSubmit={handleAIGenerate} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Architecture Requirements</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Layout Requirements</label>
                 <textarea
                   required
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"
-                  rows="5"
-                  placeholder="Example: 30x40 ft plot, G+1, 2BHK, internal staircase"
+                  rows="6"
+                  placeholder={useProfessionalAI 
+                    ? "Example:\n3bhk villa 200x300 ft G+2 parking and office east facing\n\nOR\n\nI need a 3 bedroom house on a 30x40 feet plot. Ground plus one floor. I want parking space, a small office room, and the house should face east."
+                    : "Example: 9x12 m plot, G+1, 2BHK, internal staircase"}
                 />
               </div>
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
-                <p className="text-sm text-purple-800 mb-2">
-                  <strong>Supported formats:</strong>
-                </p>
-                <ul className="text-xs text-purple-700 space-y-1">
-                  <li>• Plot dimensions: "30x40 ft" or "10x12 m"</li>
-                  <li>• Floors: "G+1" (2 floors), "G+2" (3 floors), etc.</li>
-                  <li>• Configuration: "1BHK", "2BHK", "3BHK"</li>
-                  <li>• Options: "duplex", "internal staircase"</li>
-                </ul>
-              </div>
+              
+              {useProfessionalAI ? (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <p className="text-sm text-purple-800 mb-2">
+                    <strong>Professional AI accepts ANY format:</strong>
+                  </p>
+                  <ul className="text-xs text-purple-700 space-y-1">
+                    <li>• Natural language: "I need a 3 bedroom house..."</li>
+                    <li>• Structured: "Plot: 30x40 ft, Floors: G+1, Bedrooms: 3"</li>
+                    <li>• Shorthand: "3BHK G+2 east facing parking"</li>
+                    <li>• Incomplete: "2 bedroom house" (AI makes smart assumptions)</li>
+                  </ul>
+                </div>
+              ) : (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                  <p className="text-sm text-purple-800 mb-2">
+                    <strong>Supported formats:</strong>
+                  </p>
+                  <ul className="text-xs text-purple-700 space-y-1">
+                    <li>• Plot dimensions: "30x40 ft" or "9x12 m"</li>
+                    <li>• Floors: "G+1" (2 floors), "G+2" (3 floors), etc.</li>
+                    <li>• Configuration: "1BHK", "2BHK", "3BHK"</li>
+                    <li>• Options: "duplex", "internal staircase"</li>
+                  </ul>
+                </div>
+              )}
+              
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -416,7 +482,7 @@ const Architecture = () => {
                   disabled={aiLoading}
                   className="flex-1 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:shadow-lg disabled:opacity-50"
                 >
-                  {aiLoading ? 'Generating...' : 'Generate Blueprint'}
+                  {aiLoading ? 'Generating...' : 'Generate Layout'}
                 </button>
               </div>
             </form>
@@ -430,7 +496,7 @@ const Architecture = () => {
           <div className="bg-white rounded-xl p-6 w-full max-w-6xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-4">
               <div>
-                <h2 className="text-2xl font-bold">{selectedBlueprint.metadata.configuration} Blueprint</h2>
+                <h2 className="text-2xl font-bold">{selectedBlueprint.metadata.configuration} Layout</h2>
                 <p className="text-sm text-gray-600 mt-1">{selectedBlueprint.prompt}</p>
               </div>
               <button
@@ -441,11 +507,11 @@ const Architecture = () => {
               </button>
             </div>
 
-            {/* Blueprint Image */}
+            {/* Layout Image */}
             <div className="bg-gray-50 rounded-lg p-4 mb-4">
               <img 
                 src={selectedBlueprint.blueprint_image} 
-                alt="Blueprint" 
+                alt="Layout" 
                 className="w-full h-auto"
               />
             </div>
@@ -458,19 +524,31 @@ const Architecture = () => {
                   Dimensions: {selectedBlueprint.layout.plot.width_m}m × {selectedBlueprint.layout.plot.length_m}m
                 </p>
                 <p className="text-sm text-gray-700">
+                  Plot Area: {selectedBlueprint.layout.plot.area_m2} m²
+                </p>
+                <p className="text-sm text-gray-700">
                   Total Built-up: {selectedBlueprint.layout.total_built_up_area} m²
                 </p>
                 <p className="text-sm text-gray-700">
-                  Efficiency: {(selectedBlueprint.layout.efficiency_ratio * 100).toFixed(0)}%
+                  Ground Coverage: {(selectedBlueprint.layout.ground_coverage * 100).toFixed(0)}%
+                </p>
+                <p className="text-sm text-gray-700">
+                  FSI: {selectedBlueprint.layout.fsi}
                 </p>
               </div>
               <div className="bg-green-50 p-4 rounded-lg">
                 <h3 className="font-semibold mb-2">Recommendations</h3>
                 <p className="text-xs text-gray-700">
-                  {selectedBlueprint.metadata.ventilation_notes}
+                  <strong>Ventilation:</strong> {selectedBlueprint.metadata.ventilation_notes}
                 </p>
                 <p className="text-xs text-gray-700 mt-1">
-                  {selectedBlueprint.metadata.lighting_notes}
+                  <strong>Lighting:</strong> {selectedBlueprint.metadata.lighting_notes}
+                </p>
+                <p className="text-xs text-gray-700 mt-1">
+                  <strong>Structure:</strong> {selectedBlueprint.metadata.structural_notes}
+                </p>
+                <p className="text-xs text-gray-700 mt-1">
+                  <strong>Cost Range:</strong> {selectedBlueprint.metadata.cost_estimate_range}
                 </p>
               </div>
             </div>
@@ -498,6 +576,15 @@ const Architecture = () => {
 
             {/* Actions */}
             <div className="flex gap-3">
+              {selectedBlueprint.professional_analysis && (
+                <button
+                  onClick={() => setShowProfessionalAnalysis(!showProfessionalAnalysis)}
+                  className="flex-1 flex items-center justify-center gap-2 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+                >
+                  <Sparkles size={18} />
+                  {showProfessionalAnalysis ? 'Hide' : 'View'} Professional Analysis
+                </button>
+              )}
               <button
                 onClick={() => saveBlueprintToDocuments(selectedBlueprint)}
                 className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
@@ -524,6 +611,67 @@ const Architecture = () => {
                 <Trash2 size={18} />
               </button>
             </div>
+            
+            {/* Professional Analysis Section */}
+            {showProfessionalAnalysis && selectedBlueprint.professional_analysis && (
+              <div className="mt-6 space-y-4 border-t pt-6">
+                <h3 className="text-xl font-bold text-purple-900">Professional Architect Analysis</h3>
+                
+                {/* Extracted Parameters */}
+                <div className="bg-purple-50 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">1. Extracted Parameters</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <p><strong>Plot:</strong> {selectedBlueprint.professional_analysis['1_extracted_parameters'].plot_width}ft × {selectedBlueprint.professional_analysis['1_extracted_parameters'].plot_length}ft</p>
+                    <p><strong>Facing:</strong> {selectedBlueprint.professional_analysis['1_extracted_parameters'].facing}</p>
+                    <p><strong>Floors:</strong> {selectedBlueprint.professional_analysis['1_extracted_parameters'].floors}</p>
+                    <p><strong>Bedrooms:</strong> {selectedBlueprint.professional_analysis['1_extracted_parameters'].bedrooms}</p>
+                    <p><strong>Parking:</strong> {selectedBlueprint.professional_analysis['1_extracted_parameters'].parking ? 'Yes' : 'No'}</p>
+                    <p><strong>Budget:</strong> {selectedBlueprint.professional_analysis['1_extracted_parameters'].budget_category}</p>
+                  </div>
+                </div>
+                
+                {/* Assumptions */}
+                <div className="bg-blue-50 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">2. Assumptions Made</h4>
+                  <ul className="text-sm space-y-1">
+                    {selectedBlueprint.professional_analysis['2_assumptions_made'].map((assumption, idx) => (
+                      <li key={idx}>• {assumption}</li>
+                    ))}
+                  </ul>
+                </div>
+                
+                {/* Structural Grid */}
+                <div className="bg-green-50 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">4. Structural Grid Suggestion</h4>
+                  <div className="text-sm space-y-1">
+                    <p><strong>Grid Pattern:</strong> {selectedBlueprint.professional_analysis['4_structural_grid'].grid_pattern}</p>
+                    <p><strong>Spacing:</strong> {selectedBlueprint.professional_analysis['4_structural_grid'].spacing_width} × {selectedBlueprint.professional_analysis['4_structural_grid'].spacing_length}</p>
+                    <p><strong>Total Columns:</strong> {selectedBlueprint.professional_analysis['4_structural_grid'].total_columns}</p>
+                    <p><strong>Column Size:</strong> {selectedBlueprint.professional_analysis['4_structural_grid'].column_size}</p>
+                  </div>
+                </div>
+                
+                {/* Structural Feasibility */}
+                <div className="bg-yellow-50 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">9. Structural Feasibility Notes</h4>
+                  <ul className="text-sm space-y-1">
+                    {selectedBlueprint.professional_analysis['9_structural_feasibility'].map((note, idx) => (
+                      <li key={idx}>{note}</li>
+                    ))}
+                  </ul>
+                </div>
+                
+                {/* Recommendations */}
+                <div className="bg-orange-50 p-4 rounded-lg">
+                  <h4 className="font-semibold mb-2">10. Professional Recommendations</h4>
+                  <ul className="text-sm space-y-1">
+                    {selectedBlueprint.professional_analysis['10_recommendations'].map((rec, idx) => (
+                      <li key={idx}>• {rec}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

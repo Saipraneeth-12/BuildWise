@@ -46,3 +46,42 @@ Thumbs.db
 dist/
 build/
 *.pyc
+
+# Documentation files (keep only essential)
+*_COMPLETE.md
+*_FIXES.md
+*_FIXED.md
+*_FIX_COMPLETE.md
+*_SUMMARY.md
+*_STATUS.md
+*_CHECKLIST.md
+*_GUIDE.md
+*_SYSTEM.md
+*_PLAN.md
+*_COMPARISON.md
+*_RECOMMENDATIONS.md
+*_ISSUES_AND_SOLUTIONS.md
+CHAT_*.md
+AI_*.md
+ARCHITECTURE_*.md
+LAYOUT_*.md
+IMPROVED_*.md
+PRODUCTION_*.md
+MULTI_*.md
+SENIOR_*.md
+2BHK_*.md
+!README.md
+!DEPLOYMENT_CHECKLIST.md
+
+# Test files (keep only essential)
+backend/test_*.py
+backend/analyze_*.py
+backend/generate_*.py
+backend/verify_*.py
+test_*.py
+!backend/test_complete_system.py
+
+# Presentation files
+presentation.html
+BUILDWISE_PRESENTATION.html
+JURY_PRESENTATION_REPORT.md

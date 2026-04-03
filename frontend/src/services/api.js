@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { logout } from '../utils/auth'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
@@ -16,6 +17,21 @@ api.interceptors.request.use((config) => {
   }
   return config
 })
+
+// Add response interceptor to handle 401 errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Token expired or invalid - logout and redirect to login
+      logout()
+      if (window.location.pathname !== '/login' && window.location.pathname !== '/signup') {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(error)
+  }
+)
 
 export const auth = {
   signup: (data) => api.post('/auth/signup', data),
